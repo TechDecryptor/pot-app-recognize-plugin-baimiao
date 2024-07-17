@@ -18,7 +18,7 @@ jobs:
           echo "ICON=$(cat info.json | jq '.icon' | tr -d '"')" >> "$GITHUB_ENV"
       - uses: vimtor/action-zip@v1
         with:
-          files: info.json ${{ env.ICON }} main.js
+          files: info.json ${{ env.ICON }} main.js account.db
           dest: ${{ env.NAME }}.potext
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
