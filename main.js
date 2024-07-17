@@ -80,17 +80,14 @@ async function recognize(base64, _lang, options) {
     } else {
         await login();
     }
-    console.log(headers);
     let res1 = await fetch(url + "/api/user/announcement", {
         method: 'GET',
         headers: headers,
     });
-    console.log(res1);
     res1 = await fetch(url + "/api/user/login/anonymous", {
         method: 'POST',
         headers: headers,
     });
-    console.log(res1);
     if (res1.ok) {
         let result = res1.data;
         if (result.data.token !== undefined) {
@@ -116,7 +113,6 @@ async function recognize(base64, _lang, options) {
             mode: "single"
         })
     });
-    console.log(res2);
 
     let engine = "";
     let token = "";
