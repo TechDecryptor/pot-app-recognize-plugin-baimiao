@@ -44,7 +44,7 @@ async function recognize(base64, _lang, options) {
             body: Body.json({
                 username: username,
                 password: password,
-                type: "mobile"
+                type: /^[0-9]*$/.test(username) ? "mobile" : "email"
             })
         });
         if (res1.ok) {
