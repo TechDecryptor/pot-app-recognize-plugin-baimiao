@@ -25,6 +25,8 @@ async function recognize(base64, _lang, options) {
     async function login() {
         uuid = crypto.randomUUID();
         headers["X-Auth-Uuid"] = uuid;
+        const normalizedUsername = typeof username === "string" ? username.trim() : "";
+        const loginType = normalizedUsername.includes("@") ? "email" : "mobile";
         const res = await fetch(url + "/api/user/login", {
             method: 'POST',
             headers: {
@@ -33,9 +35,9 @@ async function recognize(base64, _lang, options) {
                 'X-Auth-Uuid': uuid
             },
             body: Body.json({
-                username: username,
+                username: normalizedUsername,
                 password: password,
-                type: "email"
+                type: loginType
             })
         });
         if (res.ok) {
