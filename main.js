@@ -9,47 +9,40 @@ async function recognize(base64, _lang, options) {
     let uuid = "";
     let loginToken = "";
 
-    let headers = {
+    const headers = {
         'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Accept-Language': 'zh-TW,zh-CN;q=0.9,zh;q=0.8,en-US;q=0.7,en;q=0.6',
         'Origin': 'https://web.baimiaoapp.com',
-        'Priority': 'u=1, i',
         'Referer': 'https://web.baimiaoapp.com/',
-        'Sec-Ch-Ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
+        'Sec-Ch-Ua': '"Chromium";v="126", "Google Chrome";v="126", "Not-A.Brand";v="8"',
         'Sec-Ch-Ua-Mobile': '?0',
         'Sec-Ch-Ua-Platform': '"Windows"',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
         'X-Auth-Token': loginToken,
         'X-Auth-Uuid': uuid
-    }
+    };
 
     async function login() {
         uuid = crypto.randomUUID();
         headers["X-Auth-Uuid"] = uuid;
-        let res1 = await fetch(url + "/api/user/login", {
+        const normalizedUsername = typeof username === "string" ? username.trim() : "";
+        const loginType = normalizedUsername.includes("@") ? "email" : "mobile";
+        const res = await fetch(url + "/api/user/login", {
             method: 'POST',
             headers: {
-                'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'zh-CN,zh;q=0.9',
-                'Origin': 'https://web.baimiaoapp.com',
-                'Priority': 'u=1, i',
-                'Referer': 'https://web.baimiaoapp.com/',
-                'Sec-Ch-Ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
-                'Sec-Ch-Ua-Mobile': '?0',
-                'Sec-Ch-Ua-Platform': '"Windows"',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                ...headers,
                 'X-Auth-Token': '',
                 'X-Auth-Uuid': uuid
             },
             body: Body.json({
-                username: username,
+                username: normalizedUsername,
                 password: password,
-                type: /^[0-9]*$/.test(username) ? "mobile" : "email"
+                type: loginType
             })
         });
-        if (res1.ok) {
-            let result = res1.data;
-            if (result.data.token) {
+        if (res.ok) {
+            const result = res.data;
+            if (result.data && result.data.token) {
                 loginToken = result.data.token;
                 headers["X-Auth-Token"] = loginToken;
                 db = await Database.load(`sqlite:plugins/recognize/${id}/account.db`);
@@ -60,37 +53,35 @@ async function recognize(base64, _lang, options) {
                 throw JSON.stringify(result);
             }
         } else {
-            throw `Http Request Error\nHttp Status: ${res1.status}\n${JSON.stringify(res1.data)}`;
+            throw `Http Request Error\nHttp Status: ${res.status}\n${JSON.stringify(res.data)}`;
         }
     }
 
-    let uuidRes = await db.select('SELECT * FROM uuid');
-    let tokenRes = await db.select('SELECT * FROM token');
+    const uuidRes = await db.select('SELECT * FROM uuid');
+    const tokenRes = await db.select('SELECT * FROM token');
     await db.close();
+
     if (uuidRes.length > 0) {
-        let result = uuidRes[uuidRes.length - 1];
-        uuid = result.uuid;
+        uuid = uuidRes[uuidRes.length - 1].uuid;
         headers["X-Auth-Uuid"] = uuid;
     }
 
     if (tokenRes.length > 0) {
-        let result = tokenRes[tokenRes.length - 1];
-        loginToken = result.token;
+        loginToken = tokenRes[tokenRes.length - 1].token;
         headers["X-Auth-Token"] = loginToken;
     } else {
         await login();
     }
-    let res1 = await fetch(url + "/api/user/announcement", {
-        method: 'GET',
-        headers: headers,
-    });
-    res1 = await fetch(url + "/api/user/login/anonymous", {
+
+    await fetch(url + "/api/user/announcement", { method: 'GET', headers });
+    const anonRes = await fetch(url + "/api/user/login/anonymous", {
         method: 'POST',
-        headers: headers,
+        headers
     });
-    if (res1.ok) {
-        let result = res1.data;
-        if (result.data.token !== undefined) {
+
+    if (anonRes.ok) {
+        const result = anonRes.data;
+        if (result.data && result.data.token !== undefined) {
             loginToken = result.data.token;
             if (loginToken === "") {
                 await login();
@@ -103,60 +94,164 @@ async function recognize(base64, _lang, options) {
             throw JSON.stringify(result);
         }
     } else {
-        throw `Http Request Error\nHttp Status: ${res1.status}\n${JSON.stringify(res1.data)}`;
+        throw `Http Request Error\nHttp Status: ${anonRes.status}\n${JSON.stringify(anonRes.data)}`;
     }
 
-    let res2 = await fetch(url + "/api/perm/single", {
+    const permRes = await fetch(url + "/api/perm/single", {
         method: 'POST',
-        headers: headers,
+        headers,
         body: Body.json({
-            mode: "single"
+            mode: "single",
+            version: "v2"
         })
     });
 
     let engine = "";
-    let token = "";
-    if (res2.ok) {
-        let result = res2.data;
-        if (result.data.engine) {
+    let ocrToken = "";
+    if (permRes.ok) {
+        const result = permRes.data;
+        if (result.data && result.data.engine) {
             engine = result.data.engine;
-            token = result.data.token;
+            ocrToken = result.data.token;
         } else {
             throw "已经达到今日识别上限，请前往白描手机端开通会员或明天再试";
         }
     } else {
-        throw `Http Request Error\nHttp Status: ${res2.status}\n${JSON.stringify(res2.data)}`;
+        throw `Http Request Error\nHttp Status: ${permRes.status}\n${JSON.stringify(permRes.data)}`;
     }
 
-    let hash = CryptoJS.SHA1(`data:image/png;base64,${base64}`).toString(CryptoJS.enc.Hex);
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    const imageSize = bytes.length;
 
-    let res3 = await fetch(url + `/api/ocr/image/${engine}`, {
+    let mimeType = "image/png";
+    let extension = "png";
+    if (base64.startsWith("/9j/")) {
+        mimeType = "image/jpeg";
+        extension = "jpeg";
+    } else if (base64.startsWith("R0lG")) {
+        mimeType = "image/gif";
+        extension = "gif";
+    } else if (base64.startsWith("UklGR")) {
+        mimeType = "image/webp";
+        extension = "webp";
+    }
+
+    const ossSignRes = await fetch(url + `/api/oss/sign?mime_type=${encodeURIComponent(mimeType)}`, {
+        method: 'GET',
+        headers
+    });
+
+    let ossData = null;
+    if (ossSignRes.ok) {
+        const result = ossSignRes.data;
+        if (result.code === 1 && result.data && result.data.result) {
+            ossData = result.data.result;
+        } else {
+            throw `OSS sign error: ${JSON.stringify(result)}`;
+        }
+    } else {
+        throw `Http Request Error\nHttp Status: ${ossSignRes.status}\n${JSON.stringify(ossSignRes.data)}`;
+    }
+
+    const wordArray = CryptoJS.lib.WordArray.create(bytes);
+    const hash = CryptoJS.MD5(wordArray).toString(CryptoJS.enc.Hex);
+
+    // pot-app lacks http-multipart, so we build it manually
+    const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
+
+    function buildMultipartBody(fields, fileField, fileData, fileMime, fileName) {
+        let body = '';
+
+        // OSS PostObject requires file field to be last
+        for (const [key, value] of Object.entries(fields)) {
+            body += `--${boundary}\r\n`;
+            body += `Content-Disposition: form-data; name="${key}"\r\n\r\n`;
+            body += `${value}\r\n`;
+        }
+
+        body += `--${boundary}\r\n`;
+        body += `Content-Disposition: form-data; name="${fileField}"; filename="${fileName}"\r\n`;
+        body += `Content-Type: ${fileMime}\r\n\r\n`;
+
+        const encoder = new TextEncoder();
+        const headerBytes = encoder.encode(body);
+        const footerBytes = encoder.encode(`\r\n--${boundary}--\r\n`);
+
+        const combined = new Uint8Array(headerBytes.length + fileData.length + footerBytes.length);
+        combined.set(headerBytes, 0);
+        combined.set(fileData, headerBytes.length);
+        combined.set(footerBytes, headerBytes.length + fileData.length);
+
+        return combined;
+    }
+
+    const formFields = {
+        'key': ossData.file_key,
+        'policy': ossData.policy,
+        'x-oss-signature': ossData.signature,
+        'x-oss-signature-version': ossData.x_oss_signature_version,
+        'x-oss-credential': ossData.x_oss_credential,
+        'x-oss-date': ossData.x_oss_date,
+        'x-oss-security-token': ossData.security_token,
+        'success_action_status': '200'
+    };
+
+    const multipartBody = buildMultipartBody(
+        formFields,
+        'file',
+        bytes,
+        mimeType,
+        `image.${extension}`
+    );
+
+    const ossUploadRes = await fetch(ossData.host, {
         method: 'POST',
-        headers: headers,
+        headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': `multipart/form-data; boundary=${boundary}`,
+            'Origin': 'https://web.baimiaoapp.com',
+            'Referer': 'https://web.baimiaoapp.com/'
+        },
+        body: Body.bytes(multipartBody)
+    });
+
+    if (!ossUploadRes.ok && ossUploadRes.status !== 200) {
+        throw `OSS Upload Error\nHttp Status: ${ossUploadRes.status}\n${JSON.stringify(ossUploadRes.data)}`;
+    }
+
+    const createdAt = new Date().toISOString();
+    const fileName = `pot_screenshot.${extension}`;
+
+    const ocrRes = await fetch(url + `/api/ocr/image/${engine}`, {
+        method: 'POST',
+        headers,
         body: Body.json({
-            "batchId": "",
-            "total": 1,
-            "token": token,
-            "hash": hash,
-            "name": "pot_screenshot_cut.png",
-            "size": 0,
-            "dataUrl": `data:image/png;base64,${base64}`,
-            "result": {},
-            "status": "processing",
-            "isSuccess": false
+            token: ocrToken,
+            hash: hash,
+            name: fileName,
+            size: imageSize,
+            createdAt: createdAt,
+            fileKey: ossData.file_key,
+            result: {},
+            status: "processing",
+            isSuccess: false
         })
     });
+
     let jobStatusId = "";
-    if (res3.ok) {
-        let result = res3.data;
-        if (result.data.jobStatusId) {
-            hash = result.data.hash;
+    if (ocrRes.ok) {
+        const result = ocrRes.data;
+        if (result.data && result.data.jobStatusId) {
             jobStatusId = result.data.jobStatusId;
         } else {
             throw JSON.stringify(result);
         }
     } else {
-        throw `Http Request Error\nHttp Status: ${res3.status}\n${JSON.stringify(res3.data)}`;
+        throw `Http Request Error\nHttp Status: ${ocrRes.status}\n${JSON.stringify(ocrRes.data)}`;
     }
 
     function sleep(ms) {
@@ -164,30 +259,33 @@ async function recognize(base64, _lang, options) {
     }
 
     while (true) {
-        await sleep(100);
-        let res4 = await fetch(url + `/api/ocr/image/${engine}/status`, {
+        await sleep(200);
+        const statusRes = await fetch(url + `/api/ocr/image/${engine}/status`, {
             method: 'GET',
-            headers: headers,
+            headers,
             query: {
                 jobStatusId: jobStatusId
             }
         });
-        if (res4.ok) {
-            let result = res4.data;
-            if (!result.data.isEnded) {
+
+        if (statusRes.ok) {
+            const result = statusRes.data;
+            if (!result.data || !result.data.isEnded) {
                 continue;
             } else {
-                let res = result.data.ydResp;
-                let words = res.words_result;
-                let text = "";
-                for (let i of words) {
-                    text += i.words;
-                    text += "\n";
+                const ocrResult = result.data.ydResp;
+                if (ocrResult && ocrResult.words_result) {
+                    let text = "";
+                    for (const word of ocrResult.words_result) {
+                        text += word.words + "\n";
+                    }
+                    return text.trim();
+                } else {
+                    throw `OCR result format error: ${JSON.stringify(result)}`;
                 }
-                return text;
             }
         } else {
-            throw `Http Request Error\nHttp Status: ${res4.status}\n${JSON.stringify(res4.data)}`;
+            throw `Http Request Error\nHttp Status: ${statusRes.status}\n${JSON.stringify(statusRes.data)}`;
         }
     }
 }
